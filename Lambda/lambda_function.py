@@ -26,6 +26,40 @@ def build_validation_result(is_valid, violated_slot, message_content):
         "message": {"contentType": "PlainText", "content": message_content},
     }
 
+def validate_data(age, investment_amount, intent_request):
+    """
+    Validates the data provided by the user.
+    """
+
+    # Validate that the user is between 0 and 65
+    if age is not None:
+        age = parse_int(
+            age
+        )
+        if age <= 0 or age >= 65:
+            return build_validation_result(
+                False,
+                "age",
+                "You should be between the age of 0 and 65 to use this service, "
+                "please provide a different age.",
+            )
+
+    # Validate the investment amount, it should be > 5000
+    if investment_amount is not None:
+        investment_amount = parse_int(
+            investment_amount
+        )  # Since parameters are strings it's important to cast values
+        if investment_amount < 5000:
+            return build_validation_result(
+                False,
+                "investmentAmount",
+                "The amount to invest should be greater than 5000, "
+                "please provide an amount greater than 5000.",
+            )
+
+    # A True results is returned if age or amount are valid
+    return build_validation_result(True, None, None)
+
 
 ### Dialog Actions Helper Functions ###
 def get_slots(intent_request):
@@ -124,7 +158,66 @@ def recommend_portfolio(intent_request):
     risk_level = get_slots(intent_request)["riskLevel"]
     source = intent_request["invocationSource"]
 
-    # YOUR CODE GOES HERE!
+    if source == "DialogCodeHook":
+        # This code performs basic validation on the supplied input slots.
+
+        # Gets all the slots
+        slots = get_slots(intent_request)
+
+        # Validates user's input using the validate_data function
+        validation_result = validate_data(age, investment_amount, intent_request)
+
+        # If the data provided by the user is not valid,
+        # the elicitSlot dialog action is used to re-prompt for the first violation detected.
+        if not validation_result["isValid"]:
+            slots[validation_result["violatedSlot"]] = None  # Cleans invalid slot
+
+            # Returns an elicitSlot dialog to request new data for the invalid slot
+            return elicit_slot(
+                intent_request["sessionAttributes"],
+                intent_request["currentIntent"]["name"],
+                slots,
+                validation_result["violatedSlot"],
+                validation_result["message"],
+            )
+
+        # Fetch current session attributes
+        output_session_attributes = intent_request["sessionAttributes"]
+
+        # Once all slots are valid, a delegate dialog is returned to Lex to choose the next course of action.
+        return delegate(output_session_attributes, get_slots(intent_request))
+
+    investment_amount = parse_int(investment_amount)
+
+    if risk_level == 'None':
+        agg_amount = 1 * investment_amount
+        spy_amount = 0 * investment_amount
+    elif risk_level == 'Low':
+        agg_amount = .6 * investment_amount
+        spy_amount = .4 * investment_amount
+    elif risk_level == 'Medium':
+        agg_amount = .4 * investment_amount
+        spy_amount = .6 * investment_amount
+    elif risk_level == 'High':
+        agg_amount = .2 * investment_amount
+        spy_amount = .8 * investment_amount
+
+
+    # Return a message with conversion's result.
+    return close(
+        intent_request["sessionAttributes"],
+        "Fulfilled",
+        {
+            "contentType": "PlainText",
+            "content": """Thank you for your information {}.
+            Based on your risk level of {} and investment amount of {investment_amount:.0f} dollars, your investment recommendation is {agg_amount:.2f} dollars in AGG and {spy_amount:.2f} dollars in SPY.
+            """.format(
+                first_name, risk_level, investment_amount = investment_amount, agg_amount = agg_amount, spy_amount = spy_amount
+            ),
+        },
+    )
+
+
 
 
 ### Intents Dispatcher ###
